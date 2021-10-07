@@ -1,0 +1,113 @@
+-- Max Funnel																									
+SELECT case when o.plan_type = 'free' then 'free' else 'pro/premium' end as flag,																									
+COUNT(distinct o.order_id) domains_created,																									
+COUNT(distinct case when mx.order_id is not null then o.order_id end) as mx_set,																									
+COUNT(distinct case when mx.order_id is not null and act.activity > 0 then o.order_id end) as activated_orders,																									
+COUNT(distinct case when n.account_id is not null then mx.order_id end) as max_nudge_Seen,																									
+count(distinct b.order_id) Max_Trail_Started ,																									
+COUNT(distinct c.order_id) unique_paywall_seen,																									
+COUNT(distinct d.order_id) unique_paywall_clicked,																									
+COUNT(distinct e.order_id) max_tab_visited,																									
+COUNT(distinct f.order_id) max_tab_billing_buy_clicked,																									
+COUNT(distinct g.order_id) max_billing_accounts_Selected,																									
+COUNT(distinct h.order_id) max_billing_Order_continued,																									
+COUNT(distinct i.order_id) max_billing_trial_extended																									
+from fs_account_parquet a inner join (SELECT order_id, plan_type from flock_order_parquet where partner_id = '12') o on a.order_id = o.order_id																									
+left join																									
+(SELECT order_id, SUM(sent)+SUM(read) as activity from mailbox_read_sent_recv_mail group by 1 having SUM(sent)+SUM(read) > 0 ) act on o.order_id = act.order_id																									
+left join																									
+(SELECT order_id from pandora_mx_verified where partner_id  = '12') mx on o.order_id = mx.order_id																									
+left join																									
+(SELECT account_id from titan_max_mailbox_level where max_seen_ts is not null) n on a.account_id = n.account_id																									
+left join																									
+(select  order_id, source, min(eventts) eventts from email_max_trial_started where partner_id  != 1 group by 1,2) b																									
+on a.order_id = cast(b.order_id as varchar)																									
+left join																									
+(select  order_id, source, eventts  from email_max_paywall_seen where partner_id  != 1 group by 1,2,3) c on a.order_id = cast(c.order_id as varchar)																									
+left join																									
+(select  order_id, source, eventts  from email_max_paywall_clicked where partner_id  != 1 group by 1,2,3) d on a.order_id = cast(d.order_id as varchar)																									
+left join																									
+(select  order_id, source_hook, eventts  from control_panel_titan_max_tab_visited  where partner_id  != 1 group by 1,2,3) e on a.order_id = cast(e.order_id as varchar)																									
+left join																									
+(select  order_id, source_hook, eventts  from control_panel_max_billing_buy_clicked   where partner_id  != 1 group by 1,2,3) f on a.order_id = cast(f.order_id as varchar)																									
+left join																									
+(select  order_id, source_hook, eventts  from control_panel_max_billing_accounts_selected    where partner_id  != 1 group by 1,2,3) g on a.order_id = cast(g.order_id as varchar)																									
+left join																									
+(select  order_id, source_hook, eventts  from control_panel_max_billing_order_continued     where partner_id  != 1 group by 1,2,3) h on a.order_id = cast(h.order_id as varchar)																									
+left join																									
+(select  order_id, source_hook, eventts  from control_panel_max_billing_trial_extended_temp     where partner_id  != 1 group by 1,2,3) i on a.order_id = cast(i.order_id as varchar)																									
+WHERE a.domain_name <> 'maxistitan.online'																									
+group by 1																									
+																									
+																									
+-- Plan wise Max Funnel																									
+SELECT o.plan_type, o.partner_id, o.partner_name, count(distinct b.order_id) Max_Trail_Started ,																									
+COUNT(distinct c.order_id) unique_paywall_seen,																									
+COUNT(distinct d.order_id) unique_paywall_clicked,																									
+COUNT(distinct e.order_id) max_tab_visited,																									
+COUNT(distinct f.order_id) max_tab_billing_buy_clicked,																									
+COUNT(distinct g.order_id) max_billing_accounts_Selected,																									
+COUNT(distinct h.order_id) max_billing_Order_continued																									
+from fs_account_parquet a	inner join flock_order_parquet o on a.order_id = o.order_id																								
+left join																									
+(select  order_id, source, min(eventts) eventts from email_max_trial_started where partner_id  != 1 group by 1,2) b																									
+on a.order_id = cast(b.order_id as varchar)																									
+left join																									
+(select  order_id, source, eventts  from email_max_paywall_seen where partner_id  != 1 group by 1,2,3) c on a.order_id = cast(c.order_id as varchar)																									
+left join																									
+(select  order_id, source, eventts  from email_max_paywall_clicked where partner_id  != 1 group by 1,2,3) d on a.order_id = cast(d.order_id as varchar)																									
+left join																									
+(select  order_id, source_hook, eventts  from control_panel_titan_max_tab_visited  where partner_id  != 1 group by 1,2,3) e on a.order_id = cast(e.order_id as varchar)																									
+left join																									
+(select  order_id, source_hook, eventts  from control_panel_max_billing_buy_clicked   where partner_id  != 1 group by 1,2,3) f on a.order_id = cast(f.order_id as varchar)																									
+left join																									
+(select  order_id, source_hook, eventts  from control_panel_max_billing_accounts_selected    where partner_id  != 1 group by 1,2,3) g on a.order_id = cast(g.order_id as varchar)																									
+left join																									
+(select  order_id, source_hook, eventts  from control_panel_max_billing_order_continued     where partner_id  != 1 group by 1,2,3) h on a.order_id = cast(h.order_id as varchar)																									
+WHERE a.domain_name <> 'maxistitan.online'																									
+group by 1,2,3																									
+																									
+-- Cohort Analysis																									
+SELECT  e.is_admin , o.plan_type,																									
+case when eligible_to_extend < current_date then 1 else 0 end as eligible_to_extend_flag,																									
+																									
+case when b.account_id is not null and date(b.eventts) < date(eligible_to_extend) then '1. Not eligible'																									
+when b.account_id is not null and date(b.eventts) between date(eligible_to_extend) and date(expiry_on) then '2. 5d Prior'																									
+when b.account_id is not null and date(b.eventts) between date_add('day',+1,date(expiry_on)) and date_add('day',+7,date(expiry_on)) then '3. Week 1'																									
+when b.account_id is not null and date(b.eventts) between date_add('day',+8,date(expiry_on)) and date_add('day',+14,date(expiry_on)) then '4. Week 2'																									
+when b.account_id is not null and date(b.eventts) between date_add('day',+15,date(expiry_on)) and date_add('day',+21,date(expiry_on)) then '5. Week 3'																									
+when b.account_id is not null and date(b.eventts) between date_add('day',+22,date(expiry_on)) and date_add('day',+28,date(expiry_on)) then '6. Week 4'																									
+when b.account_id is not null and date(b.eventts) > date_add('day',+28,date(expiry_on)) then '7. >Week 4' else '0. No Trial'end as extended_duration,																									
+cast(date_trunc('week',a.eventts) as date) week_of_starting_trial,																									
+COUNT(distinct b.account_id) accounts,																									
+COUNT(distinct e.account_id) total_started																									
+																									
+from																									
+(SELECT account_id, order_id, is_admin,																									
+case when cast(account_id as bigint) in (SELECT a.account_id																									
+from flockmail.pandora_account_addon_started a																									
+inner join flockmail.fs_account_parquet c on cast(a.account_id as varchar) = c.account_id																									
+inner join flockmail.flock_order_parquet b on cast(a.order_id as varchar) = b.order_id																									
+where a.partner_id = 12 and date(eventts) >= date('2021-03-13')  and a.customer_id > 676847																									
+and ((trial = true and a.type = 'titan_max') OR (addon_plan_type = 'trial' AND a.type = 'titan_max' AND trial_number = 1)) ) then 1 else 0 end as max_trial_flag																									
+from flockmail.fs_account_parquet where partner_id = '12') e																									
+left join flock_order_parquet o on e.order_id = o.order_id																									
+left join																									
+(SELECT *																									
+from (SELECT *, date_add('day',-5,expiry_on) eligible_to_extend, row_number() over (partition by account_id order by eventts asc) rnk																									
+from																									
+(SELECT account_id, eventts, case when date(expiry_on) <= date('2021-07-23') then date('2021-07-23') else expiry_on end as expiry_on																									
+from pandora_account_addon_started																									
+where partner_id = 12 and date(eventts) >= date('2021-03-13')  and customer_id > 676847 and ((trial = true and type = 'titan_max') OR (addon_plan_type = 'trial' AND type = 'titan_max' AND trial_number = 1))))																									
+where rnk = 1																									
+) a on e.account_id = cast(a.account_id as varchar)																									
+left join																									
+(SELECT  trim(replace(replace(replace(value,'"',''),'[',''),']','')) account_id	, min(eventts) eventts																								
+FROM ( SELECT distinct order_id, eventts, accounts_selected AS data from control_panel_max_billing_order_continued  ) as t																									
+CROSS JOIN UNNEST(split(t.data, ',')) as x(value)																									
+group by 1) b on e.account_id  = b.account_id																									
+left join																									
+(select distinct  cast(account_id as varchar) account_id  from email_max_paywall_seen where partner_id  = 12 group by 1) c on e.account_id = c.account_id																									
+left join																									
+(select  distinct  cast(account_id as varchar) account_id   from email_max_paywall_clicked where partner_id  = 12 group by 1) d on e.account_id = d.account_id																									
+group by 1,2,3,4,5																									
